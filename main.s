@@ -64,36 +64,11 @@ test_str: .byte "Hello, world!", 0
 reset:
 .include "init.s"
 
-    lda #$81
-    sta ptr1
-    sta ptr1 + 1
-
-    clc
-    ror_16 ptr1
-
-    lda fp0_test
+    lda fp0_test + Fp16::mantissa
     sta fp_x + Fp16::mantissa
-
-    lda fp0_test + 1
+    lda fp0_test + Fp16::mantissa + 1
     and #%11
     sta fp_x + Fp16::mantissa + 1
-
-    lda fp0_test + 1
-    lsr
-    lsr
-    sta fp_x + Fp16::exponent
-
-    lda fp1_test
-    sta fp_y + Fp16::mantissa
-
-    lda fp1_test + 1
-    and #%11
-    sta fp_y + Fp16::mantissa + 1
-
-    lda fp1_test + 1
-    lsr
-    lsr
-    sta fp_y + Fp16::exponent
 
     jsr fp_add_sub
 

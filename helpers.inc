@@ -39,3 +39,13 @@
     rol mem
     asl mem+1
 .endmacro
+
+.macro print_at dest
+    lda #>dest
+    ldx #<dest
+    sta print_ptr+1
+    stx print_ptr
+
+    lda #0
+    sta print_complete
+.endmacro

@@ -89,8 +89,8 @@ reset:
 
     jsr to_fp
 
-    lda #<fp_x
-    ldx #>fp_x
+    lda #<fp_z
+    ldx #>fp_z
     sta ptr1
     stx ptr1 + 1
 
@@ -248,11 +248,13 @@ to_sci_notation:
     
     ldy #Fp16::mantissa + 1
     ldx #2
+    lda (ptr1), y
     jsr itob
 
 
     ldy #Fp16::mantissa
     ldx #8
+    lda (ptr1), y
     jsr itob
 
     lda #' '
@@ -266,8 +268,12 @@ to_sci_notation:
     lda #'^'
     jsr stosb
 
-
+; exponent bias
     ldy #Fp16::exponent
+    lda (ptr1), y
+    sec
+    sbc #15
+
     jsr u8toa
 
     lda #0
@@ -276,13 +282,9 @@ to_sci_notation:
     rts
 
 
-; Converts a byte into a bit string starting from the LSB
+; Converts whatever is in A into a bit string starting from the LSB
 ; X: number of bits to convert (1 to 8)
-; Y: offset for pointer
-; ptr1: pointer to a uint8
 itob:
-    lda (ptr1), y
-
     pha
     ldy print_len
     stx tmp1
@@ -313,11 +315,8 @@ itob:
 
     rts
 
-; ptr1: u8 pointer
-; Y: offset for pointer
+; converts whatever is in A into an ascii string
 u8toa:
-    lda (ptr1), y
-
 @hundreds:
     ldx #'0'-1
 :   inx
@@ -354,6 +353,7 @@ u8toa:
     txa
     jmp stosb
 
+; Stores whatever is in a into the print buffer
 stosb:
     ldx print_len
     sta print_buffer, x

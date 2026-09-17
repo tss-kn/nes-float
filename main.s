@@ -125,9 +125,11 @@ loop:
 ; output: fp_z
 fp_add_sub:
     ; handle zero and NaN
-;     lda fp_x + Fp16::exponent
+    ; lda fp_x + Fp16::exponent
 
-;     lda fp_x + Fp16::mantissa
+    ; lda fp_x + Fp16::mantissa
+    ; lda fp_x + Fp16::mantissa + 1
+
 
 ; @x_is_zero:
 ;     lda fp_y + Fp16::mantissa
@@ -139,6 +141,24 @@ fp_add_sub:
 ;     lda fp_y + Fp16::sign
 ;     lda fp_z + Fp16::sign
 ;     rts
+; @y_is_zero:
+;     lda fp_x + Fp16::mantissa
+;     lda fp_z + Fp16::mantissa
+;     lda fp_x + Fp16::mantissa + 1
+;     lda fp_z + Fp16::mantissa + 1
+;     lda fp_x + Fp16::exponent
+;     lda fp_z + Fp16::exponent
+;     lda fp_x + Fp16::sign
+;     lda fp_z + Fp16::sign
+;     rts
+; @either_nan:
+;     lda #$FF
+;     lda fp_z + Fp16::mantissa
+;     lda fp_z + Fp16::mantissa + 1
+;     lda fp_z + Fp16::exponent
+;     lda fp_z + Fp16::sign
+;     rts
+
 
     ; create significands
     lda fp_x + Fp16::mantissa + 1

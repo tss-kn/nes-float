@@ -16,7 +16,6 @@ ptr2: .res 2
 ptr3: .res 2
 ptr4: .res 2
 
-print_ptr: .res 2
 
 exec_timer: .res 1
 
@@ -51,28 +50,35 @@ return_w: .res 2
 return_dw: .res 4
 return_qw: .res 8
 
-print_len: .res 1
-print_complete: .res 1
-print_buffer: .res 255
+print_buffer: .res 255  ; buffer of characters to print (null terminated)
+print_idx: .res 1       ; index into the print buffer, indicates where the print starts and where to store a character
+print_complete: .res 1  ; indicates if there needs to be something printed (BOUND BY NMI, NOT PRACTICAL)
+
+print_ptr: .res 2       ; pointer to the part of the screen where you want to print
 
 .rodata
 fp0_test: .word %1_10001_0100110011 ; -5.2
 fp1_test: .word %0_10000_1010101011 ; ~33.33....
-test_num: .byte 183
+fp2_test: .word $4000 ; 2.0
+fp3_test: .word $3C00 ; 1.0
 ; fp0_test: .word $C533 ; -5.2
 ; fp1_test: .word $42AB ; ~33.33....
 
+; Random half-precision test values (16-bit words)
+
+
+
+test_num: .byte 183 ; decimal to ascii conversion test
 
 test_str: .byte "Hello, world!", 0
-benchmark_msg_0: .byte "Executed in "
-benchmark_msg_1: .byte " seconds"
+;
 
 .code
 reset:
 .include "init.s"
 
-    lda #<fp0_test
-    ldx #>fp0_test
+    lda #<fp2_test
+    ldx #>fp2_test
     sta ptr1
     stx ptr1 + 1
 
@@ -83,8 +89,8 @@ reset:
 
     jsr to_fp
 
-    lda #<fp1_test
-    ldx #>fp1_test
+    lda #<fp3_test
+    ldx #>fp3_test
     sta ptr1
     stx ptr1 + 1
 
@@ -103,18 +109,9 @@ reset:
     jsr fp_add_sub
     jsr to_sci_notation
 
+    lda #0
+    sta print_idx
     print_at $2000
-
-    ; jsr clear_printbuf
-
-    ; lda #<benchmark_msg_0
-    ; ldx #>benchmark_msg_0
-    ; sta ptr1
-    ; stx ptr1 + 1
-
-    ; jsr transfer_sb
-    
-    ; print_at $2020
 
 loop:
     jmp loop
@@ -127,18 +124,73 @@ loop:
 ; inputs: fp_x, fp_y
 ; output: fp_z
 fp_add_sub:
-    ; transfer sign
-    ; lda fp_x + Fp16::sign
-    ; eor fp_y + Fp16::sign
-    ; sta fp_z + Fp16::sign
+    ; handle zero and NaN
+;     lda fp_x + Fp16::exponent
+
+;     lda fp_x + Fp16::mantissa
+
+; @x_is_zero:
+;     lda fp_y + Fp16::mantissa
+;     lda fp_z + Fp16::mantissa
+;     lda fp_y + Fp16::mantissa + 1
+;     lda fp_z + Fp16::mantissa + 1
+;     lda fp_y + Fp16::exponent
+;     lda fp_z + Fp16::exponent
+;     lda fp_y + Fp16::sign
+;     lda fp_z + Fp16::sign
+;     rts
 
     ; create significands
     lda fp_x + Fp16::mantissa + 1
     ora #$4
     sta fp_x + Fp16::mantissa + 1
+    
+    lda fp_y + Fp16::mantissa + 1
+    ora #$4
+    sta fp_y + Fp16::mantissa + 1
 
+    @y_not_neg:
+
+    @adjust_exponent:
+        lda fp_x + Fp16::exponent
+        cmp fp_y + Fp16::exponent
+        beq @exp_done
+        bcc @y_exp_greater
+        
+        lda fp_x + Fp16::exponent
+        sta fp_z + Fp16::exponent
+
+        @shift_x_loop:
+            lda fp_y + Fp16::exponent
+            cmp fp_x + Fp16::exponent
+            bcs @y_exp_greater
+            
+            clc
+            ror_16 fp_y + Fp16::mantissa
+            inc fp_y + Fp16::exponent
+            jmp @shift_x_loop
+
+        @y_exp_greater:
+
+        lda fp_y + Fp16::exponent
+        sta fp_z + Fp16::exponent
+
+        @shift_y_loop:
+            lda fp_x + Fp16::exponent
+            cmp fp_y + Fp16::exponent
+            bcs @exp_done
+
+            clc
+            ror_16 fp_x + Fp16::mantissa
+            inc fp_x + Fp16::exponent
+            jmp @shift_y_loop
+
+        @exp_done:
+
+
+    ; fix significands' signs
     lda fp_x + Fp16::sign
-    beq @x_not_neg
+    beq @x_not_negative
 
     lda fp_x + Fp16::mantissa + 1
     eor #$FF
@@ -150,72 +202,55 @@ fp_add_sub:
     eor #$FF
     sta fp_x + Fp16::mantissa
 
-    inc fp_x + Fp16::mantissa
-
-    @x_not_neg:
-    
-    lda fp_y + Fp16::mantissa + 1
-    ora #$4
-    sta fp_y + Fp16::mantissa + 1
+@x_not_negative:
 
     lda fp_y + Fp16::sign
-    beq @y_not_neg
+    beq @y_not_negative
 
     lda fp_y + Fp16::mantissa + 1
     eor #$FF
+    clc
+    adc #1
     sta fp_y + Fp16::mantissa + 1
 
     lda fp_y + Fp16::mantissa
     eor #$FF
     sta fp_y + Fp16::mantissa
 
-    inc fp_y + Fp16::mantissa
+@y_not_negative:
 
-    @y_not_neg:
+    ; Z <- X ± Y
+    lda arith_subtraction
+    bne :+
 
-    @adjust_exponent:
-        lda fp_x + Fp16::exponent
-        cmp fp_y + Fp16::exponent
-        bcc @y_exp_greater
-        beq @exp_done
+    clc
+    adc_16 fp_x + Fp16::mantissa, fp_y + Fp16::mantissa, fp_y + Fp16::mantissa+1
+    jmp @fix_sign
 
-        @x_exp_greater:
-            lda fp_y + Fp16::exponent
-            cmp fp_x + Fp16::exponent
-            bcs @exp_done
-            
-            clc
-            ror_16 fp_y + Fp16::mantissa
-            inc fp_y + Fp16::exponent
-            bcc @x_exp_greater
+:   sec
+    sbc_16 fp_x + Fp16::mantissa, fp_y + Fp16::mantissa, fp_y + Fp16::mantissa+1
 
-            jmp @exp_done
-        @y_exp_greater:
-            lda fp_x + Fp16::exponent
-            cmp fp_y + Fp16::exponent
-            bcs @exp_done
+@fix_sign:
+    lda fp_x + Fp16::mantissa + 1
+    bmi :+
 
-            clc
-            ror_16 fp_x + Fp16::mantissa
-            inc fp_x + Fp16::exponent
-            bcc @y_exp_greater
-        @exp_done:
-            sta fp_z + Fp16::exponent
+    lda #0
+    sta fp_z + Fp16::sign
+    jmp @sig_normalize_overflow
 
-        ; add or subtract significands
-        lda arith_subtraction
-        ; bne @a_sbc
+:   lda #1
+    sta fp_z + Fp16::sign
 
-        ; Z <- X ± Y
-        lda arith_subtraction
-        bne :+
+    lda fp_x + Fp16::mantissa + 1
+    eor #$FF
+    clc
+    adc #1
+    sta fp_x + Fp16::mantissa + 1
 
-        clc
-        adc_16 fp_x + Fp16::mantissa, fp_y + Fp16::mantissa, fp_y + Fp16::mantissa+1
-        jmp @sig_normalize_overflow
+    lda fp_x + Fp16::mantissa
+    eor #$FF
+    sta fp_x + Fp16::mantissa
 
-    :   sec
-        sbc_16 fp_x + Fp16::mantissa, fp_y + Fp16::mantissa, fp_y + Fp16::mantissa+1
 
     @sig_normalize_overflow:
         lda fp_x + Fp16::mantissa + 1
@@ -361,7 +396,7 @@ to_sci_notation:
 ; X: number of bits to convert (1 to 8)
 itob:
     pha
-    ldy print_len
+    ldy print_idx
     stx tmp1
     dec tmp1
     tya
@@ -379,10 +414,10 @@ itob:
         lda #'1'              ; Otherwise, change to ASCII '1'
 
     @store:
-        ; ldy print_len         ; Get current buffer position
+        ; ldy print_idx         ; Get current buffer position
         sta print_buffer, y   ; Store character ('0' or '1')
         dey
-        inc print_len         ; Advance buffer length pointer
+        inc print_idx         ; Advance buffer length pointer
         
         pla                   ; Restore remaining bits into A
         dex                   ; Decrement bit counter (X)
@@ -430,18 +465,18 @@ u8toa:
 
 ; Stores whatever is in a into the print buffer
 stosb:
-    ldx print_len
+    ldx print_idx
     sta print_buffer, x
-    inc print_len
+    inc print_idx
     rts
 
 transfer_sb:
     ldy #0
-    ldx print_len
+    ldx print_idx
     :   lda (ptr1), y
         beq @done
         sta print_buffer, x
-        inc print_len
+        inc print_idx
         iny
         jmp :-
     @done:
@@ -450,7 +485,7 @@ transfer_sb:
 clear_printbuf:
     ldx #0
     lda #0
-    sta print_len
+    sta print_idx
     :   sta print_buffer, x
         inx
         bne :-
@@ -474,6 +509,8 @@ nmi:
         lda print_ptr
         sta $2006
 
+        ldx print_idx
+
         @loop:
             lda print_buffer, x
             beq @done
@@ -481,7 +518,7 @@ nmi:
             sta $2007
             inx
             jmp @loop
-            
+
         @done:
         lda #1
         sta print_complete
